@@ -1,20 +1,37 @@
 {
   "name": "flowly",
   "version": "0.0.1",
-  "description": "Durable workflow engine for TypeScript",
+  "description": "Durable workflow engine for TypeScript, backed by Postgres. Zero infrastructure.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "lint": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "pg": "^8.0.0"
+  },
   "devDependencies": {
+    "@testcontainers/postgresql": "^11.13.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "pg": "^8.13.0",
+    "testcontainers": "^11.13.0",
     "typescript": "^5.4.0",
     "vitest": "^3.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "pino": "^10.3.1"
+  }
 }
