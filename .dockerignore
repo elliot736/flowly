@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.github
+*.test.ts
+*.integration.test.ts
+vitest.config.ts
+vitest.integration.config.ts
