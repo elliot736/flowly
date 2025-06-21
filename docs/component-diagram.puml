@@ -1,0 +1,149 @@
+@startuml component-diagram
+skinparam linetype ortho
+
+title Flowly / Durable Workflow Engine — Component Diagram
+
+' ──────────────────────────────────────────────
+'  External actors
+' ──────────────────────────────────────────────
+
+actor "Application Code" as app
+
+' ──────────────────────────────────────────────
+'  Engine boundary
+' ──────────────────────────────────────────────
+
+package "Durable Workflow Engine" {
+
+  component "DurableEngine" as engine {
+    portin "trigger()" as trg
+    portin "schedule()" as sch
+    portin "cancel()" as cnl
+    portin "getStatus()" as gs
+    portin "hook() / on()" as hk
+    portin "migrate()" as mig
+    portin "start() / stop()" as ss
+    portin "healthCheck()" as hc
+    portin "retryDeadLetter()" as rdl
+  }
+
+  ' ── Worker ───────────────────────────────
+  component "Worker" as worker {
+    component "Poll Loop" as poll
+    component "Heartbeat" as heartbeat
+    component "LISTEN/NOTIFY" as notify
+  }
+
+  ' ── Executor ─────────────────────────────
+  package "Executor" as executor {
+    component "executeWorkflow()" as execWf
+    component "WorkflowContextImpl" as ctx
+    component "Compensation\n(LIFO rollback)" as comp
+    component "Retry\n(exponential / linear / fixed)" as retry
+  }
+
+  ' ── Scheduling ───────────────────────────
+  component "CronManager" as cron {
+    component "Cron Poll Loop" as cronPoll
+    component "parseCron()\ngetNextCronDate()" as cronParser
+  }
+
+  ' ── Hooks / Events ──────────────────────
+  component "HookEmitter" as hooks
+  note right of hooks
+    Events:
+    workflow:started
+    workflow:completed
+    workflow:failed
+    workflow:compensated
+    step:started
+    step:completed
+    step:failed
+  end note
+
+  ' ── Store Layer ──────────────────────────
+  interface "WorkflowStore" as storeIf
+
+  component "PostgresWorkflowStore" as pgStore
+  component "MemoryWorkflowStore" as memStore
+
+  ' ── Migration ────────────────────────────
+  component "Migrator" as migrator
+}
+
+' ──────────────────────────────────────────────
+'  External infrastructure
+' ──────────────────────────────────────────────
+
+database "PostgreSQL" as pg {
+  collections "runs" as tRuns
+  collections "steps" as tSteps
+  collections "sleep_timers" as tSleep
+  collections "cron_schedules" as tCron
+  collections "workflow_events" as tEvents
+}
+
+' ──────────────────────────────────────────────
+'  App -> Engine
+' ──────────────────────────────────────────────
+
+app --> trg : trigger workflow
+app --> sch : schedule cron
+app --> cnl : cancel run
+app --> gs  : query status
+app --> hk  : subscribe hooks/events
+app --> mig : run migrations
+app --> ss  : start / stop
+app --> hc  : health check
+app --> rdl : retry dead letter
+
+' ──────────────────────────────────────────────
+'  Engine internal wiring
+' ──────────────────────────────────────────────
+
+engine --> worker   : creates & manages
+engine --> cron     : creates & manages
+engine --> hooks    : owns
+engine --> storeIf  : delegates persistence
+
+' Worker -> Executor
+worker --> execWf        : claims run, calls
+poll --> storeIf         : claimNextRun()\n(FOR UPDATE SKIP LOCKED)
+heartbeat --> storeIf    : extendLease()
+notify ..> poll          : wakes on PG NOTIFY
+
+' Executor internals
+execWf --> ctx           : creates WorkflowContextImpl
+ctx --> storeIf          : saveStep() / getSleepTimer()\ncreateRun() (child wf)
+ctx --> retry            : withRetry() per step
+ctx --> comp             : on failure, LIFO compensate
+ctx --> hooks            : emit step/workflow events
+execWf --> storeIf       : completeRun() / failRun()\nsetDeadLetter()
+
+' Cron
+cronPoll --> storeIf     : getDueCronJobs()
+cronPoll --> cronParser  : getNextCronDate()
+cronPoll --> storeIf     : createRun() for due job
+
+' Store implementations
+pgStore ..|> storeIf
+memStore ..|> storeIf
+
+' Postgres store -> DB
+pgStore --> pg : SQL queries
+
+' Migrator
+migrator --> pg : CREATE TABLE IF NOT EXISTS
+
+' ──────────────────────────────────────────────
+'  Data flow legend
+' ──────────────────────────────────────────────
+
+legend bottom right
+  |= Symbol |= Meaning |
+  | ──>     | Direct call / dependency |
+  | ..>     | Async / event-driven     |
+  | ..\|>   | Implements interface     |
+endlegend
+
+@enduml
