@@ -1,0 +1,78 @@
+@startuml sequence-diagram
+title Flowly — Workflow Execution Lifecycle
+
+participant "Client" as client
+participant "DurableEngine" as engine
+participant "WorkflowStore" as store
+participant "Worker" as worker
+participant "Executor" as exec
+participant "WorkflowContext" as ctx
+participant "HookEmitter" as hooks
+database "PostgreSQL" as pg
+
+== Trigger Workflow ==
+
+client -> engine : trigger(definition, { input })
+engine -> store : createRun({ workflowName, input, status: pending })
+store -> pg : INSERT INTO runs
+pg --> store : runId
+store --> engine : WorkflowRun
+engine --> client : WorkflowHandle { runId }
+
+== Worker Poll & Claim ==
+
+worker -> store : claimNextRun(workerId, workflowNames, leaseMs)
+store -> pg : SELECT ... FOR UPDATE SKIP LOCKED\nUPDATE lockedBy, lockedUntil
+pg --> store : WorkflowRun
+store --> worker : claimed run
+worker -> worker : start heartbeat timer
+
+== Workflow Execution ==
+
+worker -> exec : executeWorkflow(definition, run, store)
+exec -> hooks : emit("workflow:started", { runId })
+exec -> store : getCompletedSteps(runId)
+store --> exec : StepRecord[] (for replay)
+exec -> ctx : new WorkflowContextImpl(run, completedSteps)
+
+loop for each step in workflow
+  ctx -> ctx : check if step already completed (replay)
+  alt step cached (replay)
+    ctx --> ctx : return cached result
+  else step is new
+    ctx -> hooks : emit("step:started", { stepName })
+    ctx -> ctx : execute step function
+    ctx -> store : saveStep({ stepName, result, status })
+    ctx -> hooks : emit("step:completed", { stepName, result })
+    note right of ctx : if compensate provided,\npush to compensation stack
+  end
+end
+
+alt workflow completes successfully
+  exec -> store : completeRun(runId, result)
+  exec -> hooks : emit("workflow:completed", { runId, result })
+else step throws error
+  exec -> ctx : runCompensation(compensations)
+  loop compensations in reverse order
+    ctx -> ctx : execute compensate()
+    ctx -> store : updateStepStatus(stepName, "compensated")
+  end
+  exec -> store : failRun(runId, error)
+  exec -> hooks : emit("workflow:failed", { runId, error })
+else ctx.sleep() called
+  exec -> store : createSleepTimer(runId, stepName, wakeAt)
+  exec -> store : updateRunStatus(runId, "pending", scheduledFor: wakeAt)
+  note right of exec : SleepInterrupt thrown\nWorkflow will resume later
+end
+
+worker -> worker : clear heartbeat timer
+
+== Durable Sleep Resume ==
+
+worker -> store : claimNextRun(workerId, ...)
+note right of store : only returns runs where\nscheduledFor <= now
+store --> worker : previously sleeping run
+worker -> exec : executeWorkflow(definition, run, store)
+note right of exec : replay all completed steps,\nthen continue from sleep point
+
+@enduml
