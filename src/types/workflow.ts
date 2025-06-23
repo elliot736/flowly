@@ -53,3 +53,4 @@ export function defineWorkflow<TInput, TOutput>(
 ): WorkflowDefinition<TInput, TOutput> {
   return { name, fn };
 }
+
