@@ -185,4 +185,3 @@ async function handleFailureResult(
   await store.failRun(run.id, errorMsg);
   return { outcome: "failed", error: errorMsg };
 }
-
