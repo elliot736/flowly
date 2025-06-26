@@ -69,4 +69,3 @@ export class HookEmitter {
     this.listeners.clear();
   }
 }
-
