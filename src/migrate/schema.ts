@@ -100,4 +100,3 @@ CREATE INDEX IF NOT EXISTS idx_events_event
   ON ${s}."workflow_events" (event, created_at);
 `;
 }
-
