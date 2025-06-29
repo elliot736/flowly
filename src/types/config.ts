@@ -31,3 +31,4 @@ export interface WorkerConfig {
   /** Use Postgres LISTEN/NOTIFY to be notified of new runs immediately instead of waiting for the poll interval. Default: false. */
   useNotify?: boolean;
 }
+
