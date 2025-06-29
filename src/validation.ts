@@ -51,4 +51,3 @@ export function validatePositive(value: number, name: string): void {
     throw new ValidationError(`${name} must be a positive number, got ${value}`);
   }
 }
-
