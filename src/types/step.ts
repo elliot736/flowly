@@ -42,4 +42,3 @@ export function durationToMs(d: Duration): number {
     (d.days ?? 0) * 86_400_000;
   return ms;
 }
-
