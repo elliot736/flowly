@@ -4,6 +4,7 @@
 </p>
 
 <p align="center">
+  <a href="#why-flowly">Why flowly</a> |
   <a href="#features">Features</a> |
   <a href="#install">Install</a> |
   <a href="#quick-start">Quick Start</a> |
@@ -20,6 +21,7 @@
 
 ## Table of Contents
 
+- [Why flowly](#why-flowly)
 - [Features](#features)
 - [Install](#install)
 - [Quick Start](#quick-start)
@@ -42,16 +44,26 @@
 
 ---
 
+## Why flowly
+
+Most workflow engines require dedicated infrastructure. Temporal needs a cluster of services. AWS Step Functions locks you into a cloud provider. Even lighter alternatives ask you to deploy a separate server, learn a proprietary SDK, and manage yet another piece of your stack. For many applications, this is overkill.
+
+You already have Postgres. flowly turns it into a durable workflow engine. Define workflows as plain async functions. Each step saves its result to Postgres. If the process crashes, the workflow resumes from the last completed step. No new infrastructure, no new language, no separate service to operate.
+
+The result is a library, not a platform. You import it, point it at your existing database, and write normal TypeScript. There is nothing to deploy, nothing to monitor beyond your application, and nothing standing between you and `node index.js`.
+
+---
+
 ## Features
 
-- **Workflows as functions.** No DSL, no YAML, no framework to learn.
-- **Step persistence.** Completed steps are saved and replayed on resume.
-- **Retries.** Configurable per step with exponential, linear, or fixed backoff.
-- **Compensation (sagas).** Automatic rollback of completed steps on failure.
-- **Durable sleep.** `ctx.sleep()` survives process restarts.
-- **Cron scheduling.** Recurring workflows via cron expressions.
-- **Concurrent workers.** Multiple workers with lease-based locking and `FOR UPDATE SKIP LOCKED`.
-- **Zero infrastructure.** Just Postgres. No separate server or message broker.
+- **Workflows as plain functions.** No DSL, no YAML, no state machine config. Just async/await with TypeScript.
+- **Automatic step replay.** Completed steps return saved results without re-executing. Safe to restart at any point.
+- **Retries with backoff.** Configurable per step with exponential, linear, or fixed backoff strategies.
+- **Saga compensation.** Each step can declare a rollback function. On failure, compensations run in reverse order.
+- **Durable sleep.** `ctx.sleep("wait", { hours: 1 })` persists a timer to Postgres. Survives process restarts.
+- **Concurrent workers.** Multiple processes poll for work using `FOR UPDATE SKIP LOCKED`. No advisory locks, no contention.
+- **Cron scheduling.** Recurring workflows with standard cron expressions.
+- **Zero infrastructure.** Just Postgres and `npm install`. No separate server, no message broker, no Redis.
 
 ---
 
