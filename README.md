@@ -1,25 +1,67 @@
-# flowly
+<p align="center">
+<h1 align="center">flowly</h1>
+<p align="center">Durable workflow engine for TypeScript, backed by Postgres.<br/>Define workflows as async functions. Steps persist. Crashes recover.</p>
+</p>
 
-Durable workflow engine for TypeScript, backed by Postgres. Zero infrastructure just `npm install` and pass a `pg.Pool`.
+<p align="center">
+  <a href="#features">Features</a> |
+  <a href="#install">Install</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#api">API</a> |
+  <a href="#scheduling">Scheduling</a> |
+  <a href="#how-it-works">How It Works</a> |
+  <a href="#database-schema">Database Schema</a> |
+  <a href="#testing">Testing</a> |
+  <a href="#architecture">Architecture</a> |
+  <a href="#license">License</a>
+</p>
 
-Define workflows as plain async functions. Each step is persisted to Postgres. If the process crashes, the workflow resumes from the last completed step.
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [API](#api)
+  - [defineWorkflow](#defineworkflowname-fn)
+  - [WorkflowContext](#workflowcontext)
+  - [StepOptions](#stepoptions)
+  - [DurableEngine](#durableengine)
+- [Scheduling](#scheduling)
+- [How It Works](#how-it-works)
+  - [Step Persistence and Replay](#step-persistence--replay)
+  - [Compensation (Sagas)](#compensation-sagas)
+  - [Durable Sleep](#durable-sleep)
+  - [Concurrency](#concurrency)
+  - [Crash Recovery](#crash-recovery)
+- [Database Schema](#database-schema)
+- [Testing](#testing)
+- [Architecture](#architecture)
+- [License](#license)
+
+---
 
 ## Features
 
-- **Workflows as functions** no DSL, no YAML, no framework to learn
-- **Step persistence** completed steps are saved and replayed on resume
-- **Retries** configurable per step (exponential, linear, fixed backoff)
-- **Compensation (sagas)** automatic rollback of completed steps on failure
-- **Durable sleep** `ctx.sleep()` survives process restarts
-- **Cron scheduling** recurring workflows via cron expressions
-- **Concurrent workers** multiple workers with lease-based locking and `FOR UPDATE SKIP LOCKED`
-- **Zero infrastructure** just Postgres, no separate server or message broker
+- **Workflows as functions.** No DSL, no YAML, no framework to learn.
+- **Step persistence.** Completed steps are saved and replayed on resume.
+- **Retries.** Configurable per step with exponential, linear, or fixed backoff.
+- **Compensation (sagas).** Automatic rollback of completed steps on failure.
+- **Durable sleep.** `ctx.sleep()` survives process restarts.
+- **Cron scheduling.** Recurring workflows via cron expressions.
+- **Concurrent workers.** Multiple workers with lease-based locking and `FOR UPDATE SKIP LOCKED`.
+- **Zero infrastructure.** Just Postgres. No separate server or message broker.
+
+---
 
 ## Install
 
 ```bash
 npm install flowly pg
 ```
+
+---
 
 ## Quick Start
 
@@ -38,7 +80,7 @@ const orderWorkflow = defineWorkflow(
       retry: { maxAttempts: 3, backoff: "exponential", initialDelayMs: 500 },
     });
 
-    // Durable sleep  process can restart, timer survives
+    // Durable sleep: process can restart, timer survives
     await ctx.sleep("cooling-period", { seconds: 30 });
 
     const charged = await ctx.step("charge-payment", {
@@ -75,6 +117,8 @@ const status = await engine.getStatus(handle.workflowRunId);
 await engine.stop();
 ```
 
+---
+
 ## API
 
 ### `defineWorkflow(name, fn)`
@@ -83,13 +127,13 @@ Creates a workflow definition. The function receives a `WorkflowContext` and the
 
 ### `WorkflowContext`
 
-| Method                       | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
+| Method                       | Description                                              |
+| ---------------------------- | -------------------------------------------------------- |
 | `ctx.step(name, opts)`       | Execute a named step. On replay, returns the saved result. |
-| `ctx.sleep(name, duration)`  | Pause for a duration. Durable survives restarts.           |
-| `ctx.sleepUntil(name, date)` | Pause until a specific timestamp.                          |
-| `ctx.workflowRunId`          | The unique ID of this workflow run.                        |
-| `ctx.attempt`                | Current attempt number (starts at 1).                      |
+| `ctx.sleep(name, duration)`  | Pause for a duration. Durable, survives restarts.        |
+| `ctx.sleepUntil(name, date)` | Pause until a specific timestamp.                        |
+| `ctx.workflowRunId`          | The unique ID of this workflow run.                      |
+| `ctx.attempt`                | Current attempt number (starts at 1).                    |
 
 ### `StepOptions`
 
@@ -128,12 +172,14 @@ const engine = new DurableEngine({
 | --------------------------------- | --------------------------------------------------- |
 | `engine.migrate()`                | Create schema and tables (idempotent).              |
 | `engine.start()`                  | Start the worker and cron manager.                  |
-| `engine.stop()`                   | Graceful shutdown waits for in-flight workflows.    |
+| `engine.stop()`                   | Graceful shutdown. Waits for in-flight workflows.   |
 | `engine.trigger(workflow, opts)`  | Start a workflow. Returns `{ workflowRunId }`.      |
 | `engine.schedule(workflow, opts)` | Set up a recurring workflow with a cron expression. |
 | `engine.getStatus(runId)`         | Get the current status of a workflow run.           |
 
-### Scheduling
+---
+
+## Scheduling
 
 ```ts
 // Delayed execution
@@ -149,6 +195,8 @@ await engine.schedule(orderWorkflow, {
 });
 ```
 
+---
+
 ## How It Works
 
 ### Step Persistence & Replay
@@ -160,10 +208,10 @@ When a workflow runs, each `ctx.step()` call saves its result to Postgres. If th
 If a step fails after retries are exhausted, previously completed steps are compensated in reverse order:
 
 ```
-step-1 ✓ → step-2 ✓ → step-3 ✗
-                              ↓
-                    compensate step-2
-                    compensate step-1
+step-1 completed -> step-2 completed -> step-3 failed
+                                            |
+                                  compensate step-2
+                                  compensate step-1
 ```
 
 ### Durable Sleep
@@ -172,27 +220,31 @@ step-1 ✓ → step-2 ✓ → step-3 ✗
 
 ### Concurrency
 
-Multiple workers can run simultaneously. Work is distributed via `FOR UPDATE SKIP LOCKED` no advisory locks, no contention. Each worker holds a lease that it extends with heartbeats.
+Multiple workers can run simultaneously. Work is distributed via `FOR UPDATE SKIP LOCKED`. No advisory locks, no contention. Each worker holds a lease that it extends with heartbeats.
 
 ### Crash Recovery
 
 If a worker crashes mid-step:
 
-1. The step result was never saved (incomplete)
-2. The lease expires after 30 seconds
-3. Another worker picks up the workflow
-4. Completed steps are replayed, the incomplete step re-executes
+1. The step result was never saved (incomplete).
+2. The lease expires after 30 seconds.
+3. Another worker picks up the workflow.
+4. Completed steps are replayed, the incomplete step re-executes.
 
 Steps should be idempotent or use external idempotency keys.
+
+---
 
 ## Database Schema
 
 Four tables in a configurable schema (default `durable_workflow`):
 
-- `workflow_runs` workflow state, input, result, locking
-- `workflow_steps` per-step results and status
-- `sleep_timers` durable sleep state
-- `cron_schedules` recurring workflow configuration
+- `workflow_runs` stores workflow state, input, result, and locking info.
+- `workflow_steps` stores per-step results and status.
+- `sleep_timers` stores durable sleep state.
+- `cron_schedules` stores recurring workflow configuration.
+
+---
 
 ## Testing
 
@@ -213,6 +265,8 @@ const store = new MemoryWorkflowStore();
 engine.setStore(store);
 ```
 
+---
+
 ## Architecture
 
 ### Class Diagram
@@ -226,6 +280,8 @@ engine.setStore(store);
 ### Sequence Diagram
 
 ![Sequence Diagram](docs/sequence-diagram.png)
+
+---
 
 ## License
 
