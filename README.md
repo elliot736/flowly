@@ -58,7 +58,7 @@
 ## Install
 
 ```bash
-npm install flowly pg
+npm install github:elliot736/flowly pg
 ```
 
 ---
